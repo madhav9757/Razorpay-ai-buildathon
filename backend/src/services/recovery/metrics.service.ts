@@ -5,6 +5,9 @@ class MetricsService {
     total_revenue_recovered: 0
   };
 
+  private logs: any[] = [];
+  private events: any[] = [];
+
   logRisk(amount: number) {
     this.state.total_revenue_at_risk += amount;
   }
@@ -17,8 +20,27 @@ class MetricsService {
     this.state.total_revenue_recovered += amount;
   }
 
+  addLog(log: any) {
+    this.logs.unshift({ ...log, id: Math.random().toString(), timestamp: new Date().toISOString() });
+    if (this.logs.length > 50) this.logs.pop();
+  }
+
+  updateLogStatus(paymentId: string, status: string) {
+    const log = this.logs.find(l => l.paymentId === paymentId);
+    if (log) log.status = status;
+  }
+
+  addEvent(event: any) {
+    this.events.unshift({ ...event, id: Math.random().toString(), timestamp: new Date().toISOString() });
+    if (this.events.length > 50) this.events.pop();
+  }
+
   getMetrics() {
-    return { ...this.state };
+    return { 
+      metrics: { ...this.state },
+      logs: [...this.logs],
+      events: [...this.events]
+    };
   }
 }
 

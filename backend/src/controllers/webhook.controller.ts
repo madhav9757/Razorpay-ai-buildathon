@@ -36,6 +36,8 @@ export const handleRazorpayWebhook = async (req: Request, res: Response) => {
         createdAt: new Date(paymentEntity.created_at * 1000),
       };
 
+      metricsService.addEvent({ event: 'payment.failed', paymentId: payment.paymentId });
+
       const decision = evaluateRecoveryEligibility(payment);
       console.log(`[Risk Engine] Payment ${payment.paymentId} eligibility:`, decision);
       
@@ -48,6 +50,14 @@ export const handleRazorpayWebhook = async (req: Request, res: Response) => {
         });
         
         console.log(`[AI Service] Decision: ${aiDecision.action} | Reasoning: ${aiDecision.reasoning}`);
+
+        metricsService.addLog({
+          paymentId: payment.paymentId,
+          aiDiagnosis: payment.failure.reason || 'unknown',
+          actionTaken: aiDecision.action,
+          status: 'Pending',
+          reasoning: aiDecision.reasoning
+        });
 
         if (aiDecision.action === 'PAYMENT_LINK') {
           console.log(`[Execution] Generating Payment Link for ${payment.paymentId}...`);
@@ -65,12 +75,21 @@ export const handleRazorpayWebhook = async (req: Request, res: Response) => {
             console.log(`[Execution] Success! Recovery Link generated: ${shortUrl}`);
           } catch (e: any) {
             console.error(`[Execution] Failed to generate link for ${payment.paymentId}:`, e.message);
+            metricsService.updateLogStatus(payment.paymentId, 'Failed');
           }
         } else if (aiDecision.action === 'RETRY') {
            console.log(`[Execution] Scheduling automatic retry for ${payment.paymentId}...`);
         } else if (aiDecision.action === 'ESCALATE') {
            console.log(`[Execution] Escalating ${payment.paymentId} to human support...`);
         }
+      } else {
+        metricsService.addLog({
+          paymentId: payment.paymentId,
+          aiDiagnosis: payment.failure.reason || 'unknown',
+          actionTaken: 'Ignored',
+          status: 'Ignored',
+          reasoning: 'Payment did not meet Risk Engine eligibility criteria (e.g. non-recoverable error or amount below threshold).'
+        });
       }
     } else if (payload.event === 'payment_link.paid' && payload.payload?.payment_link?.entity) {
       const paymentLinkEntity = payload.payload.payment_link.entity;
@@ -78,7 +97,9 @@ export const handleRazorpayWebhook = async (req: Request, res: Response) => {
       const originalPaymentId = paymentLinkEntity.notes?.original_payment_id;
 
       if (originalPaymentId) {
+        metricsService.addEvent({ event: 'payment_link.paid', paymentId: originalPaymentId });
         metricsService.logRecoverySuccess(amountPaidINR);
+        metricsService.updateLogStatus(originalPaymentId, 'Recovered');
         console.log(`[Recovery Verified] 💰 Successfully recovered ₹${amountPaidINR} from original payment ${originalPaymentId}!`);
         console.log(`[Metrics] Current Stats:`, metricsService.getMetrics());
       }
