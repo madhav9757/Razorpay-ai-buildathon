@@ -1,0 +1,75 @@
+import type { Request, Response } from 'express';
+import { evaluateRecoveryEligibility } from '../services/risk/risk.engine.js';
+import { evaluateRecoveryAction } from '../services/ai/ai.service.js';
+import { createRecoveryLink } from '../services/razorpay/payment-links.service.js';
+import type { Payment } from '../types/payment.js';
+
+export const handleRazorpayWebhook = async (req: Request, res: Response) => {
+  // Immediately acknowledge receipt to Razorpay
+  res.status(200).send('OK');
+
+  try {
+    const payload = req.body;
+    
+    // We expect the payload to be a razorpay webhook event
+    if (payload.event === 'payment.failed' && payload.payload?.payment?.entity) {
+      const paymentEntity = payload.payload.payment.entity;
+      
+      // Map it to our internal Payment type
+      const payment: Payment = {
+        paymentId: paymentEntity.id,
+        orderId: paymentEntity.order_id || null,
+        amount: paymentEntity.amount / 100, // INR
+        currency: paymentEntity.currency,
+        status: paymentEntity.status,
+        method: paymentEntity.method,
+        captured: paymentEntity.captured,
+        customer: {
+          email: paymentEntity.email || null,
+          contact: paymentEntity.contact || null,
+        },
+        failure: {
+          code: paymentEntity.error_code || null,
+          reason: paymentEntity.error_reason || null,
+        },
+        createdAt: new Date(paymentEntity.created_at * 1000),
+      };
+
+      const decision = evaluateRecoveryEligibility(payment);
+      console.log(`[Risk Engine] Payment ${payment.paymentId} eligibility:`, decision);
+      
+      if (decision.eligible) {
+        console.log(`[AI Service] Evaluating payment ${payment.paymentId}...`);
+        const aiDecision = await evaluateRecoveryAction({
+          amount: payment.amount,
+          reason: payment.failure.reason || 'unknown'
+        });
+        
+        console.log(`[AI Service] Decision: ${aiDecision.action} | Reasoning: ${aiDecision.reasoning}`);
+
+        if (aiDecision.action === 'PAYMENT_LINK') {
+          console.log(`[Execution] Generating Payment Link for ${payment.paymentId}...`);
+          try {
+            const shortUrl = await createRecoveryLink({
+              amountInPaise: paymentEntity.amount, // use original paise amount
+              description: `Recovery payment for failed transaction ${payment.paymentId}`,
+              customer: payment.customer.email ? {
+                email: payment.customer.email,
+                contact: payment.customer.contact
+              } : undefined
+            });
+            console.log(`[Execution] Success! Recovery Link generated: ${shortUrl}`);
+          } catch (e: any) {
+            console.error(`[Execution] Failed to generate link for ${payment.paymentId}:`, e.message);
+          }
+        } else if (aiDecision.action === 'RETRY') {
+           console.log(`[Execution] Scheduling automatic retry for ${payment.paymentId}...`);
+        } else if (aiDecision.action === 'ESCALATE') {
+           console.log(`[Execution] Escalating ${payment.paymentId} to human support...`);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[Webhook] Error processing payload:', error);
+  }
+};
