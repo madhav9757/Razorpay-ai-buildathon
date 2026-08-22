@@ -15,7 +15,7 @@ function getRazorpay(): Razorpay {
   return razorpayInstance;
 }
 
-export async function createRecoveryLink(paymentContext: { amountInPaise: number, description: string, customer?: any }): Promise<string> {
+export async function createRecoveryLink(paymentContext: { amountInPaise: number, description: string, paymentId: string, customer?: any }): Promise<string> {
   const rzp = getRazorpay();
   
   try {
@@ -33,7 +33,10 @@ export async function createRecoveryLink(paymentContext: { amountInPaise: number
         sms: true,
         email: true
       },
-      reminder_enable: true
+      reminder_enable: true,
+      notes: {
+        original_payment_id: paymentContext.paymentId
+      }
     };
 
     const paymentLink = await rzp.paymentLink.create(payload);

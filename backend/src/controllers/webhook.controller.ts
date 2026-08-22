@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import { evaluateRecoveryEligibility } from '../services/risk/risk.engine.js';
 import { evaluateRecoveryAction } from '../services/ai/ai.service.js';
 import { createRecoveryLink } from '../services/razorpay/payment-links.service.js';
+import { metricsService } from '../services/recovery/metrics.service.js';
 import type { Payment } from '../types/payment.js';
 
 export const handleRazorpayWebhook = async (req: Request, res: Response) => {
@@ -39,6 +40,7 @@ export const handleRazorpayWebhook = async (req: Request, res: Response) => {
       console.log(`[Risk Engine] Payment ${payment.paymentId} eligibility:`, decision);
       
       if (decision.eligible) {
+        metricsService.logRisk(payment.amount);
         console.log(`[AI Service] Evaluating payment ${payment.paymentId}...`);
         const aiDecision = await evaluateRecoveryAction({
           amount: payment.amount,
@@ -53,11 +55,13 @@ export const handleRazorpayWebhook = async (req: Request, res: Response) => {
             const shortUrl = await createRecoveryLink({
               amountInPaise: paymentEntity.amount, // use original paise amount
               description: `Recovery payment for failed transaction ${payment.paymentId}`,
+              paymentId: payment.paymentId,
               customer: payment.customer.email ? {
                 email: payment.customer.email,
                 contact: payment.customer.contact
               } : undefined
             });
+            metricsService.logAttempt();
             console.log(`[Execution] Success! Recovery Link generated: ${shortUrl}`);
           } catch (e: any) {
             console.error(`[Execution] Failed to generate link for ${payment.paymentId}:`, e.message);
@@ -67,6 +71,16 @@ export const handleRazorpayWebhook = async (req: Request, res: Response) => {
         } else if (aiDecision.action === 'ESCALATE') {
            console.log(`[Execution] Escalating ${payment.paymentId} to human support...`);
         }
+      }
+    } else if (payload.event === 'payment_link.paid' && payload.payload?.payment_link?.entity) {
+      const paymentLinkEntity = payload.payload.payment_link.entity;
+      const amountPaidINR = paymentLinkEntity.amount_paid / 100;
+      const originalPaymentId = paymentLinkEntity.notes?.original_payment_id;
+
+      if (originalPaymentId) {
+        metricsService.logRecoverySuccess(amountPaidINR);
+        console.log(`[Recovery Verified] 💰 Successfully recovered ₹${amountPaidINR} from original payment ${originalPaymentId}!`);
+        console.log(`[Metrics] Current Stats:`, metricsService.getMetrics());
       }
     }
   } catch (error) {
