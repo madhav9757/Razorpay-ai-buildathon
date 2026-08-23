@@ -1,4 +1,5 @@
 import type { Payment } from '../../types/payment.js';
+import { velocityGuard } from './velocity.guard.js';
 
 const RECOVERABLE_REASONS = [
   'insufficient_balance',
@@ -13,6 +14,13 @@ export interface RiskDecision {
 }
 
 export function evaluateRecoveryEligibility(payment: Payment): RiskDecision {
+  const identifier = payment.customer?.email || payment.customer?.contact || payment.paymentId;
+  const velocityCheck = velocityGuard.checkVelocity(identifier);
+
+  if (!velocityCheck.allowed) {
+    return { eligible: false, reason: 'Velocity limit exceeded' };
+  }
+
   if (payment.amount <= 500) {
     return {
       eligible: false,
