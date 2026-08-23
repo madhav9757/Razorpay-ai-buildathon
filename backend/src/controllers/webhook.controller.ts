@@ -41,7 +41,6 @@ export const handleRazorpayWebhook = async (req: Request, res: Response) => {
       if (decision.eligible) {
         const attempts = metricsService.getAttempts(payment.paymentId);
         
-        // 1. POLICY GUARDRAIL (Deterministic Stop)
         if (attempts >= 2) {
           console.log(`[Policy Guardrail] Payment ${payment.paymentId} reached max recovery attempts (2). Halting.`);
           metricsService.addLog({
@@ -70,12 +69,10 @@ export const handleRazorpayWebhook = async (req: Request, res: Response) => {
         console.log(`[AI Service] Channel: ${aiDecision.recommended_channel} | Hook: "${aiDecision.customer_communication_hook}"`);
         console.log(`[AI Service] Reasoning: ${aiDecision.reasoning}`);
 
-        // 3. ENRICHED AUDIT LOG (Saving AI metadata)
         metricsService.addLog({
           paymentId: payment.paymentId,
           amount: payment.amount,
           failureReason: payment.failure.reason || 'unknown',
-          // We combine the reasoning and channel for the frontend table
           aiDiagnosis: `${aiDecision.reasoning} (Rec: ${aiDecision.recommended_channel})`,
           action: aiDecision.action,
           policyStatus: 'APPROVED',
@@ -86,7 +83,6 @@ export const handleRazorpayWebhook = async (req: Request, res: Response) => {
            metricsService.logAttempt(payment.paymentId);
         }
 
-        // 4. EXECUTION BRANCHES
         if (aiDecision.action === 'PAYMENT_LINK') {
           console.log(`[Execution] Generating Payment Link for ${payment.paymentId}...`);
           try {
@@ -94,10 +90,12 @@ export const handleRazorpayWebhook = async (req: Request, res: Response) => {
               amountInPaise: paymentEntity.amount,
               description: `Recovery payment for failed transaction ${payment.paymentId}`,
               paymentId: payment.paymentId,
-              customer: payment.customer.email ? {
-                email: payment.customer.email,
-                contact: payment.customer.contact
-              } : undefined
+              ...(payment.customer.email ? {
+                customer: {
+                  email: payment.customer.email,
+                  ...(payment.customer.contact ? { contact: payment.customer.contact } : {})
+                }
+              } : {})
             });
             console.log(`[Execution] Success! Recovery Link generated: ${shortUrl}`);
             metricsService.updateLogStatus(payment.paymentId, { paymentLinkUrl: shortUrl });
