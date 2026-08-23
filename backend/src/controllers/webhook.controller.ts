@@ -6,21 +6,18 @@ import { metricsService } from '../services/recovery/metrics.service.js';
 import type { Payment } from '../types/payment.js';
 
 export const handleRazorpayWebhook = async (req: Request, res: Response) => {
-  // Immediately acknowledge receipt to Razorpay
   res.status(200).send('OK');
 
   try {
     const payload = req.body;
     
-    // We expect the payload to be a razorpay webhook event
     if (payload.event === 'payment.failed' && payload.payload?.payment?.entity) {
       const paymentEntity = payload.payload.payment.entity;
       
-      // Map it to our internal Payment type
       const payment: Payment = {
         paymentId: paymentEntity.id,
         orderId: paymentEntity.order_id || null,
-        amount: paymentEntity.amount / 100, // INR
+        amount: paymentEntity.amount / 100,
         currency: paymentEntity.currency,
         status: paymentEntity.status,
         method: paymentEntity.method,
@@ -63,7 +60,7 @@ export const handleRazorpayWebhook = async (req: Request, res: Response) => {
           console.log(`[Execution] Generating Payment Link for ${payment.paymentId}...`);
           try {
             const shortUrl = await createRecoveryLink({
-              amountInPaise: paymentEntity.amount, // use original paise amount
+              amountInPaise: paymentEntity.amount,
               description: `Recovery payment for failed transaction ${payment.paymentId}`,
               paymentId: payment.paymentId,
               customer: payment.customer.email ? {

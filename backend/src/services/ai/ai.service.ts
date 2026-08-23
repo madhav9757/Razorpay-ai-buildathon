@@ -15,7 +15,6 @@ export async function evaluateRecoveryAction(paymentContext: { amount: number, r
     
   if (!apiKey) {
     console.warn('[AI Service] No API key found. Falling back to deterministic mapping.');
-    // Fallback if no API key is provided
     return {
       reasoning: 'Fallback due to missing API key',
       action: paymentContext.reason === 'insufficient_balance' ? 'PAYMENT_LINK' : 'RETRY'

@@ -16,7 +16,6 @@ app.get('/api/metrics', (req, res) => {
   res.json(metricsService.getMetrics());
 });
 
-// Mount the webhook route
 app.post('/webhook/razorpay', handleRazorpayWebhook);
 
 app.get('/', (req, res) => {
