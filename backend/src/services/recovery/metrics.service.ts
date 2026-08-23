@@ -1,33 +1,54 @@
+export interface AuditLogEntry {
+  id: string;
+  timestamp: string;
+  paymentId: string;
+  amount: number;
+  failureReason: string;
+  aiDiagnosis: string;
+  action: string;
+  policyStatus: 'APPROVED' | 'DENIED';
+  recoveryStatus: 'RECOVERED' | 'PENDING' | 'STOPPED' | 'IGNORED';
+  paymentLinkUrl?: string;
+}
+
 class MetricsService {
   private state = {
-    total_revenue_at_risk: 0,
-    total_recovery_attempts: 0,
-    total_revenue_recovered: 0
+    totalRevenueAtRisk: 0,
+    totalAttempts: 0,
+    totalRevenueRecovered: 0
   };
 
-  private logs: any[] = [];
+  private logs: AuditLogEntry[] = [];
   private events: any[] = [];
+  private recoveryAttemptsCounter: Record<string, number> = {};
 
   logRisk(amount: number) {
-    this.state.total_revenue_at_risk += amount;
+    this.state.totalRevenueAtRisk += amount;
   }
 
-  logAttempt() {
-    this.state.total_recovery_attempts += 1;
+  logAttempt(paymentId: string) {
+    this.state.totalAttempts += 1;
+    this.recoveryAttemptsCounter[paymentId] = (this.recoveryAttemptsCounter[paymentId] || 0) + 1;
+  }
+
+  getAttempts(paymentId: string): number {
+    return this.recoveryAttemptsCounter[paymentId] || 0;
   }
 
   logRecoverySuccess(amount: number) {
-    this.state.total_revenue_recovered += amount;
+    this.state.totalRevenueRecovered += amount;
   }
 
-  addLog(log: any) {
+  addLog(log: Omit<AuditLogEntry, 'id' | 'timestamp'>) {
     this.logs.unshift({ ...log, id: Math.random().toString(), timestamp: new Date().toISOString() });
     if (this.logs.length > 50) this.logs.pop();
   }
 
-  updateLogStatus(paymentId: string, status: string) {
+  updateLogStatus(paymentId: string, updates: Partial<AuditLogEntry>) {
     const log = this.logs.find(l => l.paymentId === paymentId);
-    if (log) log.status = status;
+    if (log) {
+      Object.assign(log, updates);
+    }
   }
 
   addEvent(event: any) {
@@ -36,11 +57,21 @@ class MetricsService {
   }
 
   getMetrics() {
+    const recoveryRate = this.state.totalRevenueAtRisk > 0 
+      ? (this.state.totalRevenueRecovered / this.state.totalRevenueAtRisk) * 100 
+      : 0;
+
     return { 
-      metrics: { ...this.state },
-      logs: [...this.logs],
+      metrics: { 
+        ...this.state,
+        recoveryRate
+      },
       events: [...this.events]
     };
+  }
+
+  getAuditLogs() {
+    return this.logs;
   }
 }
 

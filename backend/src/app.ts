@@ -3,6 +3,7 @@ import cors from 'cors';
 import { handleRazorpayWebhook } from './controllers/webhook.controller.js';
 import { metricsService } from './services/recovery/metrics.service.js';
 import dotenv from 'dotenv';
+import { simulateBatch } from './controllers/simulation.controller.js';
 
 dotenv.config();
 
@@ -15,6 +16,12 @@ app.use(express.json());
 app.get('/api/metrics', (req, res) => {
   res.json(metricsService.getMetrics());
 });
+
+app.get('/api/audit-logs', (req, res) => {
+  res.json(metricsService.getAuditLogs());
+});
+
+app.post('/api/simulate', simulateBatch);
 
 app.post('/webhook/razorpay', handleRazorpayWebhook);
 

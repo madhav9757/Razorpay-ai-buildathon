@@ -1,19 +1,23 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 export interface RecoveryMetrics {
-  total_revenue_at_risk: number;
-  total_recovery_attempts: number;
-  total_revenue_recovered: number;
+  totalRevenueAtRisk: number;
+  totalAttempts: number;
+  totalRevenueRecovered: number;
+  recoveryRate: number;
 }
 
 export interface AuditLogEntry {
   id: string;
   timestamp: string;
   paymentId: string;
+  amount: number;
+  failureReason: string;
   aiDiagnosis: string;
-  actionTaken: string;
-  status: string;
-  reasoning?: string;
+  action: string;
+  policyStatus: 'APPROVED' | 'DENIED';
+  recoveryStatus: 'RECOVERED' | 'PENDING' | 'STOPPED' | 'IGNORED';
+  paymentLinkUrl?: string;
 }
 
 export interface WebhookEvent {
@@ -25,33 +29,71 @@ export interface WebhookEvent {
 
 export function useRecoveryData() {
   const [metrics, setMetrics] = useState<RecoveryMetrics>({
-    total_revenue_at_risk: 0,
-    total_recovery_attempts: 0,
-    total_revenue_recovered: 0,
+    totalRevenueAtRisk: 0,
+    totalAttempts: 0,
+    totalRevenueRecovered: 0,
+    recoveryRate: 0,
   });
   
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [events, setEvents] = useState<WebhookEvent[]>([]);
+  
+  const [isPolling, setIsPolling] = useState(true);
+  const [isSimulating, setIsSimulating] = useState(false);
 
-  useEffect(() => {
-    const fetchMetrics = async () => {
-      try {
-        const res = await fetch('http://localhost:3000/api/metrics');
-        if (res.ok) {
-          const data = await res.json();
-          setMetrics(data.metrics);
-          setLogs(data.logs);
-          setEvents(data.events);
-        }
-      } catch (e) {
-        console.error("Failed to fetch metrics", e);
+  const fetchMetrics = useCallback(async () => {
+    try {
+      const [metricsRes, logsRes] = await Promise.all([
+        fetch('http://localhost:3000/api/metrics'),
+        fetch('http://localhost:3000/api/audit-logs')
+      ]);
+
+      if (metricsRes.ok) {
+        const data = await metricsRes.json();
+        setMetrics(data.metrics);
+        setEvents(data.events);
       }
-    };
-
-    fetchMetrics();
-    const interval = setInterval(fetchMetrics, 2000);
-    return () => clearInterval(interval);
+      
+      if (logsRes.ok) {
+        const data = await logsRes.json();
+        setLogs(data);
+      }
+    } catch (e) {
+      console.error("Failed to fetch recovery data", e);
+    }
   }, []);
 
-  return { metrics, logs, events };
+  useEffect(() => {
+    fetchMetrics();
+    
+    if (isPolling) {
+      const interval = setInterval(fetchMetrics, 2000);
+      return () => clearInterval(interval);
+    }
+  }, [fetchMetrics, isPolling]);
+
+  const triggerSimulation = async () => {
+    setIsSimulating(true);
+    try {
+      await fetch('http://localhost:3000/api/simulate', { method: 'POST' });
+    } catch (e) {
+      console.error("Failed to trigger simulation", e);
+    } finally {
+      setIsSimulating(false);
+    }
+  };
+
+  const togglePolling = () => setIsPolling(p => !p);
+  const refreshData = () => fetchMetrics();
+
+  return { 
+    metrics, 
+    logs, 
+    events, 
+    isPolling, 
+    isSimulating, 
+    togglePolling, 
+    refreshData, 
+    triggerSimulation 
+  };
 }

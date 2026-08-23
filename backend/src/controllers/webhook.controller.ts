@@ -39,6 +39,22 @@ export const handleRazorpayWebhook = async (req: Request, res: Response) => {
       console.log(`[Risk Engine] Payment ${payment.paymentId} eligibility:`, decision);
       
       if (decision.eligible) {
+        const attempts = metricsService.getAttempts(payment.paymentId);
+        
+        if (attempts >= 2) {
+          console.log(`[Policy Guardrail] Payment ${payment.paymentId} reached max recovery attempts (2). Halting.`);
+          metricsService.addLog({
+            paymentId: payment.paymentId,
+            amount: payment.amount,
+            failureReason: payment.failure.reason || 'unknown',
+            aiDiagnosis: 'Max attempts reached',
+            action: 'HALT',
+            policyStatus: 'DENIED',
+            recoveryStatus: 'STOPPED'
+          });
+          return;
+        }
+
         metricsService.logRisk(payment.amount);
         console.log(`[AI Service] Evaluating payment ${payment.paymentId}...`);
         const aiDecision = await evaluateRecoveryAction({
@@ -50,11 +66,17 @@ export const handleRazorpayWebhook = async (req: Request, res: Response) => {
 
         metricsService.addLog({
           paymentId: payment.paymentId,
-          aiDiagnosis: payment.failure.reason || 'unknown',
-          actionTaken: aiDecision.action,
-          status: 'Pending',
-          reasoning: aiDecision.reasoning
+          amount: payment.amount,
+          failureReason: payment.failure.reason || 'unknown',
+          aiDiagnosis: aiDecision.reasoning,
+          action: aiDecision.action,
+          policyStatus: 'APPROVED',
+          recoveryStatus: 'PENDING'
         });
+
+        if (aiDecision.action === 'PAYMENT_LINK' || aiDecision.action === 'RETRY') {
+           metricsService.logAttempt(payment.paymentId);
+        }
 
         if (aiDecision.action === 'PAYMENT_LINK') {
           console.log(`[Execution] Generating Payment Link for ${payment.paymentId}...`);
@@ -68,11 +90,11 @@ export const handleRazorpayWebhook = async (req: Request, res: Response) => {
                 contact: payment.customer.contact
               } : undefined
             });
-            metricsService.logAttempt();
             console.log(`[Execution] Success! Recovery Link generated: ${shortUrl}`);
+            metricsService.updateLogStatus(payment.paymentId, { paymentLinkUrl: shortUrl });
           } catch (e: any) {
             console.error(`[Execution] Failed to generate link for ${payment.paymentId}:`, e.message);
-            metricsService.updateLogStatus(payment.paymentId, 'Failed');
+            metricsService.updateLogStatus(payment.paymentId, { recoveryStatus: 'STOPPED' });
           }
         } else if (aiDecision.action === 'RETRY') {
            console.log(`[Execution] Scheduling automatic retry for ${payment.paymentId}...`);
@@ -82,10 +104,12 @@ export const handleRazorpayWebhook = async (req: Request, res: Response) => {
       } else {
         metricsService.addLog({
           paymentId: payment.paymentId,
-          aiDiagnosis: payment.failure.reason || 'unknown',
-          actionTaken: 'Ignored',
-          status: 'Ignored',
-          reasoning: 'Payment did not meet Risk Engine eligibility criteria (e.g. non-recoverable error or amount below threshold).'
+          amount: payment.amount,
+          failureReason: payment.failure.reason || 'unknown',
+          aiDiagnosis: 'Risk Engine rejected',
+          action: 'IGNORED',
+          policyStatus: 'DENIED',
+          recoveryStatus: 'IGNORED'
         });
       }
     } else if (payload.event === 'payment_link.paid' && payload.payload?.payment_link?.entity) {
@@ -96,9 +120,8 @@ export const handleRazorpayWebhook = async (req: Request, res: Response) => {
       if (originalPaymentId) {
         metricsService.addEvent({ event: 'payment_link.paid', paymentId: originalPaymentId });
         metricsService.logRecoverySuccess(amountPaidINR);
-        metricsService.updateLogStatus(originalPaymentId, 'Recovered');
+        metricsService.updateLogStatus(originalPaymentId, { recoveryStatus: 'RECOVERED' });
         console.log(`[Recovery Verified] 💰 Successfully recovered ₹${amountPaidINR} from original payment ${originalPaymentId}!`);
-        console.log(`[Metrics] Current Stats:`, metricsService.getMetrics());
       }
     }
   } catch (error) {
