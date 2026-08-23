@@ -36,11 +36,12 @@ export const handleRazorpayWebhook = async (req: Request, res: Response) => {
       metricsService.addEvent({ event: 'payment.failed', paymentId: payment.paymentId });
 
       const decision = evaluateRecoveryEligibility(payment);
-      console.log(`[Risk Engine] Payment ${payment.paymentId} eligibility:`, decision);
+      console.log(`\n[Risk Engine] Payment ${payment.paymentId} eligibility:`, decision);
       
       if (decision.eligible) {
         const attempts = metricsService.getAttempts(payment.paymentId);
         
+        // 1. POLICY GUARDRAIL (Deterministic Stop)
         if (attempts >= 2) {
           console.log(`[Policy Guardrail] Payment ${payment.paymentId} reached max recovery attempts (2). Halting.`);
           metricsService.addLog({
@@ -57,18 +58,25 @@ export const handleRazorpayWebhook = async (req: Request, res: Response) => {
 
         metricsService.logRisk(payment.amount);
         console.log(`[AI Service] Evaluating payment ${payment.paymentId}...`);
+        
         const aiDecision = await evaluateRecoveryAction({
           amount: payment.amount,
-          reason: payment.failure.reason || 'unknown'
+          reason: payment.failure.reason || 'unknown',
+          ...(payment.failure.code ? { error_code: payment.failure.code } : {}),
+          retry_count: attempts
         });
         
-        console.log(`[AI Service] Decision: ${aiDecision.action} | Reasoning: ${aiDecision.reasoning}`);
+        console.log(`[AI Service] Action: ${aiDecision.action} | Confidence: ${aiDecision.confidence_score * 100}%`);
+        console.log(`[AI Service] Channel: ${aiDecision.recommended_channel} | Hook: "${aiDecision.customer_communication_hook}"`);
+        console.log(`[AI Service] Reasoning: ${aiDecision.reasoning}`);
 
+        // 3. ENRICHED AUDIT LOG (Saving AI metadata)
         metricsService.addLog({
           paymentId: payment.paymentId,
           amount: payment.amount,
           failureReason: payment.failure.reason || 'unknown',
-          aiDiagnosis: aiDecision.reasoning,
+          // We combine the reasoning and channel for the frontend table
+          aiDiagnosis: `${aiDecision.reasoning} (Rec: ${aiDecision.recommended_channel})`,
           action: aiDecision.action,
           policyStatus: 'APPROVED',
           recoveryStatus: 'PENDING'
@@ -78,6 +86,7 @@ export const handleRazorpayWebhook = async (req: Request, res: Response) => {
            metricsService.logAttempt(payment.paymentId);
         }
 
+        // 4. EXECUTION BRANCHES
         if (aiDecision.action === 'PAYMENT_LINK') {
           console.log(`[Execution] Generating Payment Link for ${payment.paymentId}...`);
           try {
@@ -97,9 +106,13 @@ export const handleRazorpayWebhook = async (req: Request, res: Response) => {
             metricsService.updateLogStatus(payment.paymentId, { recoveryStatus: 'STOPPED' });
           }
         } else if (aiDecision.action === 'RETRY') {
-           console.log(`[Execution] Scheduling automatic retry for ${payment.paymentId}...`);
+           console.log(`[Execution] Scheduling silent automatic retry for ${payment.paymentId}...`);
         } else if (aiDecision.action === 'ESCALATE') {
-           console.log(`[Execution] Escalating ${payment.paymentId} to human support...`);
+           console.log(`[Execution] Escalating ${payment.paymentId} to human support queue...`);
+           metricsService.updateLogStatus(payment.paymentId, { recoveryStatus: 'STOPPED' });
+        } else if (aiDecision.action === 'HALT') {
+           console.log(`[Execution] AI determined payment ${payment.paymentId} should be halted.`);
+           metricsService.updateLogStatus(payment.paymentId, { recoveryStatus: 'STOPPED' });
         }
       } else {
         metricsService.addLog({
@@ -107,9 +120,9 @@ export const handleRazorpayWebhook = async (req: Request, res: Response) => {
           amount: payment.amount,
           failureReason: payment.failure.reason || 'unknown',
           aiDiagnosis: 'Risk Engine rejected',
-          action: 'IGNORED',
+          action: 'IGNORED' as any,
           policyStatus: 'DENIED',
-          recoveryStatus: 'IGNORED'
+          recoveryStatus: 'IGNORED' as any
         });
       }
     } else if (payload.event === 'payment_link.paid' && payload.payload?.payment_link?.entity) {
@@ -121,7 +134,7 @@ export const handleRazorpayWebhook = async (req: Request, res: Response) => {
         metricsService.addEvent({ event: 'payment_link.paid', paymentId: originalPaymentId });
         metricsService.logRecoverySuccess(amountPaidINR);
         metricsService.updateLogStatus(originalPaymentId, { recoveryStatus: 'RECOVERED' });
-        console.log(`[Recovery Verified] 💰 Successfully recovered ₹${amountPaidINR} from original payment ${originalPaymentId}!`);
+        console.log(`\n[Recovery Verified] 💰 Successfully recovered ₹${amountPaidINR} from original payment ${originalPaymentId}!`);
       }
     }
   } catch (error) {

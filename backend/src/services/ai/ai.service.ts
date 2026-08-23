@@ -1,13 +1,24 @@
 import fetch from 'node-fetch';
 
-export type RecoveryAction = 'PAYMENT_LINK' | 'RETRY' | 'ESCALATE';
+export type RecoveryAction = 'PAYMENT_LINK' | 'RETRY' | 'ESCALATE' | 'HALT';
 
 export interface AIDecision {
-  reasoning: string;
   action: RecoveryAction;
+  root_cause_category: 'CUSTOMER_FUNDS' | 'NETWORK_OUTAGE' | 'USER_DROP' | 'SECURITY_RISK' | 'POLICY_VIOLATION' | 'UNKNOWN';
+  confidence_score: number;
+  recovery_probability: number;
+  recommended_channel: 'WHATSAPP_UPI' | 'EMAIL' | 'SILENT_BACKGROUND' | 'MANUAL_SUPPORT' | 'NONE';
+  reasoning: string;
+  customer_communication_hook: string;
 }
 
-export async function evaluateRecoveryAction(paymentContext: { amount: number, reason: string }): Promise<AIDecision> {
+export async function evaluateRecoveryAction(paymentContext: { 
+  amount: number; 
+  reason: string; 
+  error_code?: string; 
+  error_description?: string;
+  retry_count?: number;
+}): Promise<AIDecision> {
   const apiKey = process.env.OPENROUTER_API_KEY || process.env.OPENAI_API_KEY;
   const baseUrl = process.env.OPENROUTER_API_KEY 
     ? 'https://openrouter.ai/api/v1/chat/completions'
@@ -16,30 +27,46 @@ export async function evaluateRecoveryAction(paymentContext: { amount: number, r
   if (!apiKey) {
     console.warn('[AI Service] No API key found. Falling back to deterministic mapping.');
     return {
+      action: paymentContext.reason === 'insufficient_balance' ? 'PAYMENT_LINK' : 'RETRY',
+      root_cause_category: 'CUSTOMER_FUNDS',
+      confidence_score: 0.8,
+      recovery_probability: 0.7,
+      recommended_channel: 'WHATSAPP_UPI',
       reasoning: 'Fallback due to missing API key',
-      action: paymentContext.reason === 'insufficient_balance' ? 'PAYMENT_LINK' : 'RETRY'
+      customer_communication_hook: 'Complete your transaction with a single tap using your preferred UPI app.'
     };
   }
 
   const prompt = `
-You are an AI Revenue Recovery Agent. Analyze the following failed payment context and decide the best recovery action.
+You are an Autonomous AI Financial Recovery Engine operating inside Razorpay's payment infrastructure.
+Analyze the failed payment and output a recovery strategy.
+
 Context:
 - Amount: ₹${paymentContext.amount}
 - Failure Reason: ${paymentContext.reason}
+- Error Code: ${paymentContext.error_code || 'N/A'}
+- Prior Retries: ${paymentContext.retry_count || 0}
 
-Rules:
-- If reason is "insufficient_balance", the action MUST be "PAYMENT_LINK".
-- If reason is "payment_timed_out" or similar retryable network issues, the action MUST be "RETRY".
-- For all other recoverable issues, decide between "PAYMENT_LINK" and "RETRY", or "ESCALATE" if human intervention is needed.
+OPERATIONAL POLICIES:
+1. 'insufficient_balance': Card/account lacks funds. Action: PAYMENT_LINK. Channel: WHATSAPP_UPI.
+2. 'payment_timed_out' | 'gateway_error': Network glitch. Action: RETRY. Channel: SILENT_BACKGROUND.
+3. 'authentication_failed' | 'customer_cancelled': User abandoned 3DS/OTP. Action: PAYMENT_LINK. Channel: EMAIL/WHATSAPP_UPI.
+4. 'fraud_suspected' | 'card_disabled': Permanent decline. Action: ESCALATE or HALT. Channel: MANUAL_SUPPORT or NONE.
+5. Amount < ₹500: Below minimum threshold. Action: HALT.
 
 Respond ONLY with valid JSON in this exact format:
 {
-  "reasoning": "<string explaining why>",
-  "action": "PAYMENT_LINK" | "RETRY" | "ESCALATE"
-}
-  `.trim();
+  "action": "PAYMENT_LINK" | "RETRY" | "ESCALATE" | "HALT",
+  "root_cause_category": "CUSTOMER_FUNDS" | "NETWORK_OUTAGE" | "USER_DROP" | "SECURITY_RISK" | "POLICY_VIOLATION",
+  "confidence_score": <number between 0.0 and 1.0>,
+  "recovery_probability": <number between 0.0 and 1.0>,
+  "recommended_channel": "WHATSAPP_UPI" | "EMAIL" | "SILENT_BACKGROUND" | "MANUAL_SUPPORT" | "NONE",
+  "reasoning": "<1-2 sentence concise diagnostic explanation>",
+  "customer_communication_hook": "<Friendly 1-sentence copy to send customer, or empty if silent>"
+}`.trim();
 
-  const model = process.env.AI_MODEL || (process.env.OPENROUTER_API_KEY ? 'openai/gpt-3.5-turbo' : 'gpt-3.5-turbo');
+  // gpt-4o-mini is heavily optimized for strict JSON output
+  const model = process.env.AI_MODEL || (process.env.OPENROUTER_API_KEY ? 'openai/gpt-4o-mini' : 'gpt-4o-mini');
 
   try {
     const response = await fetch(baseUrl, {
@@ -67,8 +94,13 @@ Respond ONLY with valid JSON in this exact format:
   } catch (error: any) {
     console.error('[AI Service] Error calling AI:', error.message);
     return {
+      action: 'PAYMENT_LINK',
+      root_cause_category: 'UNKNOWN',
+      confidence_score: 0.5,
+      recovery_probability: 0.5,
+      recommended_channel: 'EMAIL',
       reasoning: 'Error calling AI model, defaulting to PAYMENT_LINK',
-      action: 'PAYMENT_LINK'
+      customer_communication_hook: 'There was an issue with your payment. Please click here to try again.'
     };
   }
 }
