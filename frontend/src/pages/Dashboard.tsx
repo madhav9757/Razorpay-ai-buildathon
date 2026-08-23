@@ -5,70 +5,79 @@ import { EventFeed } from "../components/EventFeed";
 import { RefreshCw, Play, Pause, Zap } from "lucide-react";
 
 export default function Dashboard() {
-  const { 
-    metrics, 
-    logs, 
-    events, 
-    isPolling, 
-    isSimulating, 
-    togglePolling, 
-    refreshData, 
-    triggerSimulation 
+  const {
+    metrics,
+    logs,
+    events,
+    isPolling,
+    isSimulating,
+    togglePolling,
+    refreshData,
+    triggerSimulation,
   } = useRecoveryData();
 
   return (
     <div className="min-h-screen bg-white text-black flex flex-col font-mono selection:bg-black selection:text-white">
-      <header className="border-b-2 border-black bg-white px-6 py-3 flex justify-between items-center z-20 sticky top-0">
-        <div className="flex items-center gap-3">
-          <Zap className="w-5 h-5 text-black fill-black" />
-          <h1 className="text-base font-bold tracking-tight uppercase">
+      <header className="border-b-2 border-black bg-white px-4 sm:px-6 py-3 flex flex-wrap justify-between items-center sticky top-0 z-30 gap-3">
+        <div className="flex items-center gap-2">
+          <Zap className="w-5 h-5 fill-black stroke-black" />
+          <h1 className="text-sm sm:text-base font-black tracking-tight uppercase">
             AI Revenue Recovery Engine
           </h1>
-          <span className="ml-2 flex h-3 w-3 bg-black"></span>
+          <span className="w-2.5 h-2.5 bg-black ml-1 inline-block" />
         </div>
-        
-        <div className="flex items-center gap-2 text-sm font-bold">
-          <button 
+
+        <div className="flex items-center gap-2 text-xs font-bold uppercase">
+          <button
+            type="button"
             onClick={togglePolling}
-            className="flex items-center gap-2 px-3 py-1.5 border-2 border-black hover:bg-black hover:text-white transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 border-2 border-black hover:bg-black hover:text-white active:bg-black active:text-white"
           >
-            {isPolling ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-            {isPolling ? "POLLING: ON" : "POLLING: OFF"}
+            {isPolling ? (
+              <Pause className="w-3.5 h-3.5" />
+            ) : (
+              <Play className="w-3.5 h-3.5" />
+            )}
+            <span>Polling: {isPolling ? "ON" : "OFF"}</span>
           </button>
-          
-          <button 
+
+          <button
+            type="button"
             onClick={refreshData}
-            className="flex items-center gap-2 px-3 py-1.5 border-2 border-black hover:bg-black hover:text-white transition-colors"
-            title="Refresh Logs"
+            aria-label="Refresh Data"
+            className="p-1.5 border-2 border-black hover:bg-black hover:text-white"
           >
             <RefreshCw className="w-4 h-4" />
           </button>
 
-          <button 
+          <button
+            type="button"
             onClick={triggerSimulation}
             disabled={isSimulating}
-            className="flex items-center gap-2 px-4 py-1.5 bg-black hover:bg-white hover:text-black border-2 border-black text-white font-bold transition-colors disabled:opacity-50 ml-2"
+            className="flex items-center gap-2 px-4 py-1.5 bg-black border-2 border-black text-white hover:bg-white hover:text-black disabled:opacity-40 disabled:pointer-events-none"
           >
             {isSimulating ? (
-              <RefreshCw className="w-4 h-4 animate-spin" />
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
             ) : (
-              <Play className="w-4 h-4 fill-current" />
+              <Play className="w-3.5 h-3.5 fill-current" />
             )}
-            SIMULATE BATCH
+            <span>Simulate Batch</span>
           </button>
         </div>
       </header>
 
-      <main className="flex-1 max-w-[1600px] w-full mx-auto p-4 grid grid-cols-1 lg:grid-cols-4 gap-4">
-        <div className="col-span-1 lg:col-span-3 flex flex-col gap-4">
+      <main className="flex-1 max-w-[1600px] w-full mx-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-4 gap-4">
+        <div className="lg:col-span-3 flex flex-col gap-4">
           <Metrics metrics={metrics} />
-          <div className="flex-1 bg-white border-2 border-black overflow-hidden min-h-125">
-             <AuditLog logs={logs} />
+
+          <div className="flex-1 border-2 border-black bg-white overflow-x-auto min-h-120">
+            <AuditLog logs={logs} />
           </div>
         </div>
-        <div className="col-span-1 lg:col-span-1 bg-white border-2 border-black h-150 lg:h-[calc(100vh-100px)] sticky top-20 overflow-hidden">
+
+        <aside className="lg:col-span-1 border-2 border-black bg-white h-125 lg:h-[calc(100vh-6rem)] lg:sticky lg:top-20 overflow-hidden flex flex-col">
           <EventFeed events={events} />
-        </div>
+        </aside>
       </main>
     </div>
   );

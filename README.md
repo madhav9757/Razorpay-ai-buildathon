@@ -1,27 +1,99 @@
-# Autonomous AI Revenue Recovery Agent
+# AI Revenue Recovery Engine
 
-## Features
+**Autonomous payment failure diagnostics and recovery without human intervention.**
 
-**Backend (Node.js + Express):**
-- **Razorpay Webhook Integration:** Listens to Razorpay payment events (e.g., `payment.failed`).
-- **AI Revenue Recovery Engine:** Analyzes payment failure reasons (like `authentication_failed`, `insufficient_balance`, `fraud_suspected`) and automatically acts to recover the revenue by generating new payment links.
-- **Metrics Service:** Tracks recovery statistics, including total recovered revenue and recovery rates.
-- **Synthetic Webhook Injector:** A testing script (`synthetic-injector.ts`) that simulates various payment failures and successful recoveries for local development and demonstration.
+Payment drop-offs due to failures or friction points result in significant lost revenue and customer frustration. The AI Revenue Recovery Engine is an autonomous agent that intelligently evaluates payment failures, diagnoses root causes, and executes the optimal recovery strategy to capture lost funds—seamlessly bridging the gap between failed transactions and successful conversions.
 
-**Frontend (React + Vite + Tailwind CSS):**
-- **AI Recovery Dashboard:** A comprehensive dashboard to monitor the AI agent's performance.
-- **Live Metrics Display:** Visualizes key performance indicators (KPIs) like Total Revenue Recovered, active recovery attempts, etc.
-- **Audit Log:** Displays a detailed, historical log of the AI's actions and decisions for each failed payment.
-- **Event Feed:** A real-time feed showing incoming webhook events and the immediate actions taken by the system.
+## System Architecture
 
-## Implementation Checklist
+The core pipeline operates on a continuous feedback loop from the Razorpay Webhook, routing through deterministic and probabilistic risk models before autonomous execution.
 
-Here are the main tasks we have completed:
+```mermaid
+graph TD
+    A[Razorpay Webhook] --> B(Deterministic Risk Engine)
+    B -->|Micro-tx < ₹500 / Permanent Fraud| C[Halt / Escalate]
+    B -->|Eligible Failure| D{AI Diagnostic Model}
+    D -->|Authentication Error| E[Action: PAYMENT_LINK]
+    D -->|Temporary Decline| F[Action: RETRY]
+    D -->|High Risk / Unknown| G[Action: ESCALATE]
+    D -->|Terminal Error| H[Action: HALT]
+    
+    E --> I[Generate Custom Payment Link via API]
+    F --> J[Schedule Retry via Gateway]
+    G --> K[Flag to Human Operator]
+    
+    style A fill:#1a1a1a,stroke:#333,color:#fff
+    style B fill:#333,stroke:#555,color:#fff
+    style D fill:#2b4c7e,stroke:#3b6baf,color:#fff
+    style C fill:#4a1c1c,stroke:#732828,color:#fff
+    style H fill:#4a1c1c,stroke:#732828,color:#fff
+```
 
-- [x] **Project Setup:** Initialized the project structure with separate `backend` (Express) and `frontend` (React + Vite) directories.
-- [x] **Razorpay Integration:** Set up the Razorpay SDK and configured webhook endpoints to securely receive payment events.
-- [x] **Recovery Logic:** Implemented the core backend logic to parse failed webhooks, determine the failure reason, and generate Razorpay payment links for recovery.
-- [x] **Metrics API:** Created a backend service and API endpoint (`/api/metrics`) to aggregate and serve recovery data.
-- [x] **Synthetic Testing:** Built a synthetic injector script to seamlessly test the webhook flow and populate the dashboard with realistic data.
-- [x] **Dashboard UI:** Designed and developed the AI Recovery Dashboard frontend using Tailwind CSS and components.
-- [x] **Data Integration:** Connected the frontend dashboard to the backend APIs to display real-time Metrics, Audit Logs, and the Event Feed.
+## Core Philosophy: Risk Engine vs. LLM Synergy
+
+Relying solely on LLMs for financial operations is cost-prohibitive and poses unnecessary risks. This architecture utilizes a **hybrid evaluation model**.
+
+The **Deterministic Risk Engine** acts as the primary gatekeeper. It rapidly filters out non-recoverable transactions (e.g., permanent fraud flags or micro-transactions under ₹500) using hardcoded logic. This ensures cost-efficiency and absolute safety at scale.
+
+The **LLM (OpenRouter/OpenAI)** is invoked *only* for eligible payments. When triggered, the AI Diagnostic Model analyzes the webhook metadata to deduce the root cause, selects the highest-probability recovery channel, and synthesizes dynamic, customer-friendly communication hooks to maximize conversion. 
+
+## The 10-Scenario Synthetic Test Suite
+
+Validating autonomous recovery logic requires robust simulation. The project ships with a built-in deterministic simulator (`synthetic-injector.ts`) designed to test the system under load. 
+
+The live demo suite continuously injects a stream of synthesized webhook events covering 4 distinct recovery branches:
+- **PAYMENT_LINK**: Automatically dispatching recovery links with personalized context.
+- **RETRY**: Queueing transactions for later attempts based on transient failure codes.
+- **ESCALATE**: Routing complex, edge-case failures to support teams.
+- **HALT**: Terminating the workflow for definitive declines.
+
+This suite mathematically proves the AI's contextual decision-making and operational resilience in a controlled environment.
+
+## Quickstart & Local Setup
+
+### 1. Clone & Install
+
+```bash
+git clone https://github.com/madhav9757/Razorpay-ai-buildathon.git
+cd Razorpay-ai-buildathon
+
+# Install backend dependencies
+cd backend
+npm install
+
+# Install frontend dependencies
+cd ../frontend
+npm install
+```
+
+### 2. Environment Configuration
+
+Create a `.env` file in the `backend` directory with the following variables:
+
+```env
+RAZORPAY_KEY_ID="your_razorpay_key_id"
+RAZORPAY_KEY_SECRET="your_razorpay_key_secret"
+OPENROUTER_API_KEY="your_openrouter_api_key"
+```
+
+Create a `.env` file in the `frontend` directory:
+
+```env
+VITE_API_BASE_URL="http://localhost:3000"
+```
+
+### 3. Start Development Servers
+
+Run the backend API and webhook listeners:
+
+```bash
+cd backend
+npm run dev
+```
+
+In a new terminal window, boot the React frontend:
+
+```bash
+cd frontend
+npm run dev
+```
