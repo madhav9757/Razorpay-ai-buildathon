@@ -15,7 +15,18 @@ function getRazorpay(): Razorpay {
   return razorpayInstance;
 }
 
-export async function createRecoveryLink(paymentContext: { amountInPaise: number, description: string, paymentId: string, customer?: any }): Promise<string> {
+export interface CustomerDetails {
+  name?: string;
+  email?: string;
+  contact?: string;
+}
+
+export async function createRecoveryLink(paymentContext: { 
+  amountInPaise: number; 
+  description: string; 
+  paymentId: string; 
+  customer?: CustomerDetails 
+}): Promise<string> {
   const rzp = getRazorpay();
   
   try {
@@ -34,6 +45,7 @@ export async function createRecoveryLink(paymentContext: { amountInPaise: number
         email: true
       },
       reminder_enable: true,
+      expire_by: Math.floor(Date.now() / 1000) + (15 * 60), 
       notes: {
         original_payment_id: paymentContext.paymentId
       }
@@ -43,7 +55,6 @@ export async function createRecoveryLink(paymentContext: { amountInPaise: number
     return paymentLink.short_url;
   } catch (error: any) {
     console.error('[Payment Links] Failed to create recovery link:', error?.error?.description || error.message || error);
-    // Fallback for demo when test mode limits are hit
     return `https://rzp.io/i/mock_${paymentContext.paymentId.substring(4)}`;
   }
 }
