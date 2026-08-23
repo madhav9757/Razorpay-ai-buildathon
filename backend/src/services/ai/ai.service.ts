@@ -1,106 +1,115 @@
 import fetch from 'node-fetch';
 
 export type RecoveryAction = 'PAYMENT_LINK' | 'RETRY' | 'ESCALATE' | 'HALT';
+export type CommunicationChannel = 'SMS' | 'WHATSAPP' | 'EMAIL' | 'SILENT';
 
 export interface AIDecision {
-  action: RecoveryAction;
-  root_cause_category: 'CUSTOMER_FUNDS' | 'NETWORK_OUTAGE' | 'USER_DROP' | 'SECURITY_RISK' | 'POLICY_VIOLATION' | 'UNKNOWN';
+  root_cause: string;
   confidence_score: number;
-  recovery_probability: number;
-  recommended_channel: 'WHATSAPP_UPI' | 'EMAIL' | 'SILENT_BACKGROUND' | 'MANUAL_SUPPORT' | 'NONE';
+  action: RecoveryAction;
   reasoning: string;
+  recommended_channel: CommunicationChannel;
   customer_communication_hook: string;
 }
 
-export async function evaluateRecoveryAction(paymentContext: { 
-  amount: number; 
-  reason: string; 
-  error_code?: string; 
-  error_description?: string;
-  retry_count?: number;
-}): Promise<AIDecision> {
+interface DiagnosticOutput {
+  root_cause: string;
+  confidence_score: number;
+}
+
+interface PolicyOutput {
+  action: RecoveryAction;
+  reasoning: string;
+}
+
+interface GenerativeOutput {
+  recommended_channel: CommunicationChannel;
+  customer_communication_hook: string;
+}
+
+async function callLLM(systemPrompt: string, userPrompt: string): Promise<string> {
   const apiKey = process.env.OPENROUTER_API_KEY || process.env.OPENAI_API_KEY;
-  const baseUrl = process.env.OPENROUTER_API_KEY 
+  const baseUrl = process.env.OPENROUTER_API_KEY
     ? 'https://openrouter.ai/api/v1/chat/completions'
     : 'https://api.openai.com/v1/chat/completions';
-    
+
   if (!apiKey) {
-    console.warn('[AI Service] No API key found. Falling back to deterministic mapping.');
-    return {
-      action: paymentContext.reason === 'insufficient_balance' ? 'PAYMENT_LINK' : 'RETRY',
-      root_cause_category: 'CUSTOMER_FUNDS',
-      confidence_score: 0.8,
-      recovery_probability: 0.7,
-      recommended_channel: 'WHATSAPP_UPI',
-      reasoning: 'Fallback due to missing API key',
-      customer_communication_hook: 'Complete your transaction with a single tap using your preferred UPI app.'
-    };
+    throw new Error('No API key found.');
   }
 
-  const prompt = `
-You are an Autonomous AI Financial Recovery Engine operating inside Razorpay's payment infrastructure.
-Analyze the failed payment and output a recovery strategy.
-
-Context:
-- Amount: ₹${paymentContext.amount}
-- Failure Reason: ${paymentContext.reason}
-- Error Code: ${paymentContext.error_code || 'N/A'}
-- Prior Retries: ${paymentContext.retry_count || 0}
-
-OPERATIONAL POLICIES:
-1. 'insufficient_balance': Card/account lacks funds. Action: PAYMENT_LINK. Channel: WHATSAPP_UPI.
-2. 'payment_timed_out' | 'gateway_error': Network glitch. Action: RETRY. Channel: SILENT_BACKGROUND.
-3. 'authentication_failed' | 'customer_cancelled': User abandoned 3DS/OTP. Action: PAYMENT_LINK. Channel: EMAIL/WHATSAPP_UPI.
-4. 'fraud_suspected' | 'card_disabled': Permanent decline. Action: ESCALATE or HALT. Channel: MANUAL_SUPPORT or NONE.
-5. Amount < ₹500: Below minimum threshold. Action: HALT.
-
-Respond ONLY with valid JSON in this exact format:
-{
-  "action": "PAYMENT_LINK" | "RETRY" | "ESCALATE" | "HALT",
-  "root_cause_category": "CUSTOMER_FUNDS" | "NETWORK_OUTAGE" | "USER_DROP" | "SECURITY_RISK" | "POLICY_VIOLATION",
-  "confidence_score": <number between 0.0 and 1.0>,
-  "recovery_probability": <number between 0.0 and 1.0>,
-  "recommended_channel": "WHATSAPP_UPI" | "EMAIL" | "SILENT_BACKGROUND" | "MANUAL_SUPPORT" | "NONE",
-  "reasoning": "<1-2 sentence concise diagnostic explanation>",
-  "customer_communication_hook": "<Friendly 1-sentence copy to send customer, or empty if silent>"
-}`.trim();
-
-  // gpt-4o-mini is heavily optimized for strict JSON output
   const model = process.env.AI_MODEL || (process.env.OPENROUTER_API_KEY ? 'openai/gpt-4o-mini' : 'gpt-4o-mini');
 
+  const response = await fetch(baseUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model: model,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      response_format: { type: "json_object" }
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`AI API returned status ${response.status}`);
+  }
+
+  const data = await response.json() as any;
+  return data.choices[0].message.content;
+}
+
+async function runDiagnosticNode(amount: number, reason: string, error_code?: string): Promise<DiagnosticOutput> {
+  const systemPrompt = "You are a financial diagnostic AI. Analyze the error and return JSON with root_cause (string) and confidence_score (number 0-1).";
+  const userPrompt = `Amount: ${amount}\nReason: ${reason}\nError Code: ${error_code || 'N/A'}`;
+
+  const content = await callLLM(systemPrompt, userPrompt);
+  return JSON.parse(content) as DiagnosticOutput;
+}
+
+async function runPolicyNode(root_cause: string, confidence_score: number, retry_count: number): Promise<PolicyOutput> {
+  const systemPrompt = "You are a risk management AI. Based on the diagnosis, decide the action. Return JSON with action (strictly 'PAYMENT_LINK' | 'RETRY' | 'ESCALATE' | 'HALT') and reasoning (1 sentence).";
+  const userPrompt = `Root Cause: ${root_cause}\nConfidence Score: ${confidence_score}\nRetry Count: ${retry_count}`;
+
+  const content = await callLLM(systemPrompt, userPrompt);
+  return JSON.parse(content) as PolicyOutput;
+}
+
+async function runGenerativeNode(root_cause: string, action: RecoveryAction): Promise<GenerativeOutput> {
+  const systemPrompt = "You are a customer success AI. Return JSON with recommended_channel ('SMS' | 'WHATSAPP' | 'EMAIL' | 'SILENT') and customer_communication_hook (A short, polite 1-sentence message). Only generate a hook if action is PAYMENT_LINK or RETRY.";
+  const userPrompt = `Root Cause: ${root_cause}\nAction: ${action}`;
+
+  const content = await callLLM(systemPrompt, userPrompt);
+  return JSON.parse(content) as GenerativeOutput;
+}
+
+export const evaluateRecoveryAction = async (params: { amount: number; reason: string; error_code?: string; retry_count: number }): Promise<AIDecision> => {
   try {
-    const response = await fetch(baseUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: model,
-        messages: [{ role: 'system', content: prompt }],
-        response_format: { type: "json_object" }
-      })
-    });
+    const diagnostic = await runDiagnosticNode(params.amount, params.reason, params.error_code);
+    const policy = await runPolicyNode(diagnostic.root_cause, diagnostic.confidence_score, params.retry_count);
+    const generative = await runGenerativeNode(diagnostic.root_cause, policy.action);
 
-    if (!response.ok) {
-      throw new Error(`AI API returned status ${response.status}`);
-    }
-
-    const data = await response.json() as any;
-    const content = data.choices[0].message.content;
-    const parsed = JSON.parse(content) as AIDecision;
-    
-    return parsed;
-  } catch (error: any) {
-    console.error('[AI Service] Error calling AI:', error.message);
     return {
-      action: 'PAYMENT_LINK',
-      root_cause_category: 'UNKNOWN',
-      confidence_score: 0.5,
-      recovery_probability: 0.5,
-      recommended_channel: 'EMAIL',
-      reasoning: 'Error calling AI model, defaulting to PAYMENT_LINK',
-      customer_communication_hook: 'There was an issue with your payment. Please click here to try again.'
+      root_cause: diagnostic.root_cause,
+      confidence_score: diagnostic.confidence_score,
+      action: policy.action,
+      reasoning: policy.reasoning,
+      recommended_channel: generative.recommended_channel,
+      customer_communication_hook: generative.customer_communication_hook
+    };
+  } catch (error) {
+    console.error('[AI Service] Orchestrator failed or JSON parsing error:', error);
+    return {
+      root_cause: 'UNKNOWN',
+      confidence_score: 0,
+      action: 'HALT',
+      reasoning: 'Fallback due to orchestration failure or missing API key',
+      recommended_channel: 'SILENT',
+      customer_communication_hook: ''
     };
   }
-}
+};
