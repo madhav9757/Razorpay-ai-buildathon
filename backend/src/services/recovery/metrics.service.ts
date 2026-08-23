@@ -73,6 +73,19 @@ class MetricsService {
   getAuditLogs() {
     return this.logs;
   }
+
+  getPaymentJourney(paymentId: string) {
+    const log = this.logs.find(l => l.paymentId === paymentId);
+    if (!log) return null;
+    const timelineEvents = this.events
+      .filter(e => e.paymentId === paymentId || (e.payload?.payment_link?.entity?.notes?.original_payment_id === paymentId))
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+      .map(e => ({ timestamp: e.timestamp, event: e.event }));
+    return {
+      ...log,
+      timelineEvents
+    };
+  }
 }
 
 export const metricsService = new MetricsService();

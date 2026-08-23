@@ -21,6 +21,15 @@ app.get('/api/audit-logs', (req, res) => {
   res.json(metricsService.getAuditLogs());
 });
 
+app.get('/api/audit-logs/:id', (req, res) => {
+  const journey = metricsService.getPaymentJourney(req.params.id);
+  if (!journey) {
+    res.status(404).json({ error: 'Payment journey not found' });
+    return;
+  }
+  res.json(journey);
+});
+
 app.post('/api/simulate', simulateBatch);
 
 app.post('/webhook/razorpay', handleRazorpayWebhook);
