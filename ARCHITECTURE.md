@@ -12,42 +12,11 @@ $$
 \text{Webhook Payload} \longrightarrow \text{Idempotency Guard} \longrightarrow \text{Velocity Guardrail} \longrightarrow \text{EVR Economic Gate} \longrightarrow \text{Multi-Agent AI Chain} \longrightarrow \text{Action Dispatch}
 $$
 
-```mermaid
+````mermaid
 graph TD
     subgraph Ingestion ["1. Ingestion & Security Layer"]
         A[Razorpay Webhook POST] --> B[Idempotency Hash Check: paymentId + timestamp]
-        B -->|Duplicate < 5s Window| B_Drop[Silent Debounce & Drop]
-        B -->|Unique Payload| C[Algorithmic Velocity Guardrail: Map<string, timestamps>]
-        C -->| > 3 Failures / 60s | C_Reject[Halt: VELOCITY_LIMIT_EXCEEDED]
-    end
-
-    subgraph Risk_EVR ["2. Deterministic Risk & Economic Gate (EVR)"]
-        C -->|Passed Velocity| D{Deterministic Rules}
-        D -->|Amount <= ₹500 or Permanent Fraud Code| D_Reject[Halt: Non-Viable / Blacklisted]
-        D -->|Passed Threshold| E[Expected Value of Recovery Calculation]
-        E -->|"EVR = (V * Pc * Hr) - C_ops <= 0"| E_Reject[Halt: Negative Net Economic Yield]
-        E -->|"EVR > 0 (Financially Viable)"| F[Initialize Multi-Agent Chain]
-    end
-
-    subgraph AI_Chain ["3. Multi-Agent Prompt Chaining (OpenRouter API Pipeline)"]
-        F --> G[Agent 1: Diagnostic Node <br/> Parses error signature -> root_cause & confidence_score]
-        G --> H[Agent 2: Business Policy Node <br/> Evaluates root_cause & retry_count -> Action Selection]
-        H --> I[Agent 3: Generative Node <br/> Selects communication channel & drafts localized hook]
-    end
-
-    subgraph Execution ["4. Execution Dispatch Matrix"]
-        I --> J{Synthesized Action Decision}
-        J -->|PAYMENT_LINK| K[Generate Dynamic Razorpay Link & Dispatch Hook via SMS/WhatsApp]
-        J -->|RETRY| L[Trigger Backoff & Queue Automated Gateway Retry]
-        J -->|ESCALATE| M[Flag to Human Operator Dashboard for Manual Review]
-        J -->|HALT| N[Silently Terminate Workflow & Commit Final Audit Record]
-    end
-
-    style Ingestion fill:#ffffff,stroke:#000000,stroke-width:2px,color:#000000
-    style Risk_EVR fill:#ffffff,stroke:#000000,stroke-width:2px,color:#000000
-    style AI_Chain fill:#000000,stroke:#000000,stroke-width:2px,color:#ffffff
-    style Execution fill:#ffffff,stroke:#000000,stroke-width:2px,color:#000000
-```
+![Architecture Topology](./public/architecture.png)
 
 ### 1.1 Ingestion & Idempotency Layer
 
@@ -96,7 +65,7 @@ interface DiagnosticOutput {
   root_cause: string;
   confidence_score: number;
 }
-```
+````
 
 ### Node 2: The Business Policy Node
 
