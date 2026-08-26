@@ -4,38 +4,30 @@
 
 Payment drop-offs due to failures or friction points result in significant lost revenue and customer frustration. The AI Revenue Recovery Engine is an autonomous agent that intelligently evaluates payment failures, diagnoses root causes, and executes the optimal recovery strategy to capture lost funds—seamlessly bridging the gap between failed transactions and successful conversions.
 
-## System Architecture
+## Detailed Working Mechanism
 
-The core pipeline operates on a continuous feedback loop from the Razorpay Webhook, routing through deterministic and probabilistic risk models before autonomous execution.
+The system operates through a seamless, multi-stage pipeline designed to intercept, analyze, and recover failed payments efficiently:
 
-```mermaid
-graph TD
-    A[Razorpay Webhook] --> B(Deterministic Risk Engine)
-    B -->|Micro-tx < ₹500 / Permanent Fraud| C[Halt / Escalate]
-    B -->|Eligible Failure| D{AI Diagnostic Model}
-    D -->|Authentication Error| E[Action: PAYMENT_LINK]
-    D -->|Temporary Decline| F[Action: RETRY]
-    D -->|High Risk / Unknown| G[Action: ESCALATE]
-    D -->|Terminal Error| H[Action: HALT]
-    
-    E --> I[Generate Custom Payment Link via API]
-    F --> J[Schedule Retry via Gateway]
-    G --> K[Flag to Human Operator]
-    
-    style A fill:#1a1a1a,stroke:#333,color:#fff
-    style B fill:#333,stroke:#555,color:#fff
-    style D fill:#2b4c7e,stroke:#3b6baf,color:#fff
-    style C fill:#4a1c1c,stroke:#732828,color:#fff
-    style H fill:#4a1c1c,stroke:#732828,color:#fff
-```
+1. **Webhook Ingestion:** 
+   The process begins when a payment fails on the Razorpay gateway. The system listens for Razorpay webhook events (e.g., `payment.failed`), capturing all relevant transaction and error metadata in real-time.
 
-## Core Philosophy: Risk Engine vs. LLM Synergy
+2. **Deterministic Risk Filtering:** 
+   Before involving AI, the incoming event passes through a deterministic rule engine. This stage quickly discards transactions that are not viable for recovery—such as micro-transactions (e.g., < ₹500) or those flagged for severe fraud. This ensures the system remains highly cost-efficient and safe.
 
-Relying solely on LLMs for financial operations is cost-prohibitive and poses unnecessary risks. This architecture utilizes a **hybrid evaluation model**.
+3. **AI-Powered Diagnostics:** 
+   For failures that pass the initial filter, the system invokes its core AI Diagnostic Model (powered by LLMs like OpenAI/OpenRouter). The AI analyzes the error codes, payment context, and customer metadata to pinpoint the exact root cause of the failure (e.g., temporary bank downtime, incorrect OTP, or insufficient funds).
 
-The **Deterministic Risk Engine** acts as the primary gatekeeper. It rapidly filters out non-recoverable transactions (e.g., permanent fraud flags or micro-transactions under ₹500) using hardcoded logic. This ensures cost-efficiency and absolute safety at scale.
+4. **Strategic Recovery Execution:** 
+   Based on the AI's diagnosis, the system selects and autonomously executes the best recovery strategy:
+   - **Payment Link Generation (`PAYMENT_LINK`):** If the failure requires a new payment attempt (like an authentication error), the system generates a personalized Razorpay Payment Link and dispatches it with context-aware messaging.
+   - **Automated Retry (`RETRY`):** For transient errors (like temporary gateway timeouts), the system queues the transaction for a delayed automatic retry.
+   - **Human Escalation (`ESCALATE`):** Highly complex or high-value edge cases are flagged and routed to a human operator dashboard for manual intervention.
+   - **Workflow Halt (`HALT`):** For absolute terminal declines, the process is safely aborted.
 
-The **LLM (OpenRouter/OpenAI)** is invoked *only* for eligible payments. When triggered, the AI Diagnostic Model analyzes the webhook metadata to deduce the root cause, selects the highest-probability recovery channel, and synthesizes dynamic, customer-friendly communication hooks to maximize conversion. 
+5. **Continuous Learning & Analytics:** 
+   Every decision and outcome is logged, enabling real-time analytics on recovery success rates, failure patterns, and revenue salvaged.
+
+> **Note:** For a deep dive into the system's technical architecture, data flows, and design philosophy, please see our [Architecture Documentation](ARCHITECTURE.md).
 
 ## The 10-Scenario Synthetic Test Suite
 
@@ -51,52 +43,7 @@ This suite mathematically proves the AI's contextual decision-making and operati
 
 ## Quickstart & Local Setup
 
-### 1. Clone & Install
-
-```bash
-git clone https://github.com/madhav9757/Razorpay-ai-buildathon.git
-cd Razorpay-ai-buildathon
-
-# Install backend dependencies
-cd backend
-npm install
-
-# Install frontend dependencies
-cd ../frontend
-npm install
-```
-
-### 2. Environment Configuration
-
-Create a `.env` file in the `backend` directory with the following variables:
-
-```env
-RAZORPAY_KEY_ID="your_razorpay_key_id"
-RAZORPAY_KEY_SECRET="your_razorpay_key_secret"
-OPENROUTER_API_KEY="your_openrouter_api_key"
-```
-
-Create a `.env` file in the `frontend` directory:
-
-```env
-VITE_API_BASE_URL="http://localhost:3000"
-```
-
-### 3. Start Development Servers
-
-Run the backend API and webhook listeners:
-
-```bash
-cd backend
-npm run dev
-```
-
-In a new terminal window, boot the React frontend:
-
-```bash
-cd frontend
-npm run dev
-```
+To get the project running locally, check out the dedicated [Setup Guide](SETUP.md). It contains step-by-step instructions for installation, environment configuration, and booting up the development servers.
 
 ## 🚀 Future Scope & Scalability
 
