@@ -1,34 +1,142 @@
 # System Architecture: AI Revenue Recovery Engine
 
-The core pipeline operates on a continuous feedback loop from the Razorpay Webhook, routing through deterministic and probabilistic risk models before autonomous execution.
+The AI Revenue Recovery Engine is engineered around a strict, non-blocking asynchronous event loop that processes Razorpay webhook payloads. The execution flow strictly enforces the separation of concerns through an ordered gatekeeping sequence, designed for high throughput, robust security, and precise economic viability filtering.
 
-## Flow Diagram
+## 1. Core Architectural Pipeline
+
+The system routes incoming webhook payloads through a deterministic gauntlet before handing them off to the probabilistic AI models. This prevents unnecessary token usage and protects against malicious velocity attacks.
+
+### Execution Flow Sequence
+
+$$
+\text{Webhook Payload} \longrightarrow \text{Idempotency Guard} \longrightarrow \text{Velocity Guardrail} \longrightarrow \text{EVR Economic Gate} \longrightarrow \text{Multi-Agent AI Chain} \longrightarrow \text{Action Dispatch}
+$$
 
 ```mermaid
 graph TD
-    A[Razorpay Webhook] --> B(Deterministic Risk Engine)
-    B -->|Micro-tx < ₹500 / Permanent Fraud| C[Halt / Escalate]
-    B -->|Eligible Failure| D{AI Diagnostic Model}
-    D -->|Authentication Error| E[Action: PAYMENT_LINK]
-    D -->|Temporary Decline| F[Action: RETRY]
-    D -->|High Risk / Unknown| G[Action: ESCALATE]
-    D -->|Terminal Error| H[Action: HALT]
-    
-    E --> I[Generate Custom Payment Link via API]
-    F --> J[Schedule Retry via Gateway]
-    G --> K[Flag to Human Operator]
-    
-    style A fill:#1a1a1a,stroke:#333,color:#fff
-    style B fill:#333,stroke:#555,color:#fff
-    style D fill:#2b4c7e,stroke:#3b6baf,color:#fff
-    style C fill:#4a1c1c,stroke:#732828,color:#fff
-    style H fill:#4a1c1c,stroke:#732828,color:#fff
+    subgraph Ingestion ["1. Ingestion & Security Layer"]
+        A[Razorpay Webhook POST] --> B[Idempotency Hash Check: paymentId + timestamp]
+        B -->|Duplicate < 5s Window| B_Drop[Silent Debounce & Drop]
+        B -->|Unique Payload| C[Algorithmic Velocity Guardrail: Map<string, timestamps>]
+        C -->| > 3 Failures / 60s | C_Reject[Halt: VELOCITY_LIMIT_EXCEEDED]
+    end
+
+    subgraph Risk_EVR ["2. Deterministic Risk & Economic Gate (EVR)"]
+        C -->|Passed Velocity| D{Deterministic Rules}
+        D -->|Amount <= ₹500 or Permanent Fraud Code| D_Reject[Halt: Non-Viable / Blacklisted]
+        D -->|Passed Threshold| E[Expected Value of Recovery Calculation]
+        E -->|EVR = (V * Pc * Hr) - C_ops <= 0| E_Reject[Halt: Negative Net Economic Yield]
+        E -->|EVR > 0 (Financially Viable)| F[Initialize Multi-Agent Chain]
+    end
+
+    subgraph AI_Chain ["3. Multi-Agent Prompt Chaining (OpenRouter API Pipeline)"]
+        F --> G[Agent 1: Diagnostic Node <br/> Parses error signature -> root_cause & confidence_score]
+        G --> H[Agent 2: Business Policy Node <br/> Evaluates root_cause & retry_count -> Action Selection]
+        H --> I[Agent 3: Generative Node <br/> Selects communication channel & drafts localized hook]
+    end
+
+    subgraph Execution ["4. Execution Dispatch Matrix"]
+        I --> J{Synthesized Action Decision}
+        J -->|PAYMENT_LINK| K[Generate Dynamic Razorpay Link & Dispatch Hook via SMS/WhatsApp]
+        J -->|RETRY| L[Trigger Backoff & Queue Automated Gateway Retry]
+        J -->|ESCALATE| M[Flag to Human Operator Dashboard for Manual Review]
+        J -->|HALT| N[Silently Terminate Workflow & Commit Final Audit Record]
+    end
+
+    style Ingestion fill:#ffffff,stroke:#000000,stroke-width:2px,color:#000000
+    style Risk_EVR fill:#ffffff,stroke:#000000,stroke-width:2px,color:#000000
+    style AI_Chain fill:#000000,stroke:#000000,stroke-width:2px,color:#ffffff
+    style Execution fill:#ffffff,stroke:#000000,stroke-width:2px,color:#000000
 ```
 
-## Core Philosophy: Risk Engine vs. LLM Synergy
+### 1.1 Ingestion & Idempotency Layer
 
-Relying solely on LLMs for financial operations is cost-prohibitive and poses unnecessary risks. This architecture utilizes a **hybrid evaluation model**.
+- **Webhook Interface:** Listens to incoming HTTP POST events (specifically `payment.failed`) from the Razorpay network.
+- **Deduplication Matrix:** Implements an in-memory sliding hash index on `paymentId` combined with the event timestamp vector. Duplicate network deliveries firing within a 5-second window are silently short-circuited. This prevents double-processing and redundant token consumption in distributed environments.
 
-The **Deterministic Risk Engine** acts as the primary gatekeeper. It rapidly filters out non-recoverable transactions (e.g., permanent fraud flags or micro-transactions under ₹500) using hardcoded logic. This ensures cost-efficiency and absolute safety at scale.
+### 1.2 Algorithmic Velocity Guardrail (`velocity.guard.ts`)
 
-The **LLM (OpenRouter/OpenAI)** is invoked *only* for eligible payments. When triggered, the AI Diagnostic Model analyzes the webhook metadata to deduce the root cause, selects the highest-probability recovery channel, and synthesizes dynamic, customer-friendly communication hooks to maximize conversion. 
+- **Sliding-Window Rate Limiter:** Operates entirely in memory using a typed dictionary map (`Map<string, number[]>`) indexing client contact points (`customer.email` or `customer.contact`).
+- **Threshold Execution:** Maintains a rolling 60-second window. If any single identifier accumulates more than $3$ failure timestamps, the guardrail trips, immediately setting `allowed: false` and short-circuiting the pipeline with a `VELOCITY_LIMIT_EXCEEDED` status code without touching external AI APIs.
+
+### 1.3 Economic Unit-Economics Gate: EVR Model (`risk.engine.ts`)
+
+Before spending compute cycles or LLM tokens on diagnostic analysis, transactions undergo quantitative viability filtering. The **Expected Value of Recovery (EVR)** formula calculates net statistical yield:
+
+$$
+\text{EVR} = (V \times P_c \times H_r) - C_{\text{ops}}
+$$
+
+**Where:**
+
+- $V$: Transaction amount in INR.
+- $P_c$: Default diagnostic confidence baseline ($0.75$ prior to deep-scan, scaling up to $0.98$ post-agent evaluation).
+- $H_r$: Historical success probability indexed dynamically from Razorpay error code categories:
+  - `payment_timed_out`: $0.85$
+  - `authentication_failed`: $0.60$
+  - `insufficient_balance`: $0.40$
+  - `customer_cancelled`: $0.30$
+  - `DEFAULT`: $0.50$
+- $C_{\text{ops}}$: Fixed operational overhead baseline ($\text{₹}2.50$ covering LLM token consumption and webhook dispatch routing).
+
+Transactions yielding $\text{EVR} \le 0$ or absolute transaction values below the $\text{₹}500$ floor are dropped instantly to preserve system margins.
+
+## 2. Multi-Agent Prompt Chaining Architecture (`ai.service.ts`)
+
+Instead of relying on a monolithic, single-shot LLM call—which increases token latency and structural hallucination risks—the system decomposes execution into three sequential, isolated nodes communicating via strictly typed JSON payloads.
+
+### Node 1: The Diagnostic Node
+
+- **System Context:** "You are a financial diagnostic AI. Analyze the error and return JSON with root_cause (string) and confidence_score (number 0-1)."
+- **Inputs:** `amount`, `reason`, `error_code`
+- **Output Schema:**
+
+```typescript
+interface DiagnosticOutput {
+  root_cause: string;
+  confidence_score: number;
+}
+```
+
+### Node 2: The Business Policy Node
+
+- **System Context:** "You are a risk management AI. Based on the diagnosis, decide the action. Return JSON with action (strictly 'PAYMENT_LINK' | 'RETRY' | 'ESCALATE' | 'HALT') and reasoning (1 sentence)."
+- **Inputs:** Diagnostic `root_cause`, `confidence_score`, and active `retry_count`.
+- **Output Schema:**
+
+```typescript
+interface PolicyOutput {
+  action: "PAYMENT_LINK" | "RETRY" | "ESCALATE" | "HALT";
+  reasoning: string;
+}
+```
+
+### Node 3: The Generative Node
+
+- **System Context:** "You are a customer success AI. Return JSON with recommended_channel ('SMS' | 'WHATSAPP' | 'EMAIL' | 'SILENT') and customer_communication_hook (A short, polite 1-sentence message). Only generate a hook if action is PAYMENT_LINK or RETRY."
+- **Inputs:** `root_cause`, determined `action`.
+- **Output Schema:**
+
+```typescript
+interface GenerativeOutput {
+  recommended_channel: "SMS" | "WHATSAPP" | "EMAIL" | "SILENT";
+  customer_communication_hook: string;
+}
+```
+
+## 3. Execution Action Protocols
+
+Once the orchestrator synthesizes the multi-agent outputs, the engine maps the decision to one of four rigid operational paths:
+
+- **PAYMENT_LINK:** Triggered when a payment failure requires active client intervention (e.g., authentication drops, expired cards). Instantly generates a secure Razorpay payment URL paired with an optimized communication hook for immediate dispatch.
+- **RETRY:** Triggered for transient infrastructure faults (e.g., bank gateway timeouts). Schedules an automated retry sequence while suppressing unnecessary customer notifications to avoid friction.
+- **ESCALATE:** Triggered when complex anomaly vectors or high-value transactions exceed automated confidence boundaries. Flags the transaction for manual review in the administrative dashboard.
+- **HALT:** Triggered on hard fraud tags, terminal card blocks, or negative EVR scores. Silently terminates execution to preserve compute resources and maintain risk parameters.
+
+## 4. Synthetic Test Injection & Diagnostics
+
+To validate system resilience under deterministic test parameters, the engine includes a local scenario injector (`synthetic-injector.ts`) capable of mocking complex edge-case vectors:
+
+- **Velocity Attack Vectors:** Rapid-fire execution scripts that simulate brute-force card testing payloads to verify sliding-window lockouts and rate limiters.
+- **Micro-Transaction Filtration:** Boundary validation ensuring amounts under $\text{₹}500$ and negative EVR calculations bypass LLM evaluation loops entirely.
+- **Malformed Payload Handling:** Garbage-string error handling to test fallback defaults (reverting to a safe `HALT` state with `UNKNOWN` root cause mapping).

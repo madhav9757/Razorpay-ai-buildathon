@@ -1,6 +1,13 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
-import { ArrowLeft, ExternalLink, ShieldCheck, Cpu, Activity, BarChart3 } from "lucide-react";
+import {
+  ArrowLeft,
+  ExternalLink,
+  ShieldCheck,
+  Cpu,
+  Activity,
+  BarChart3,
+} from "lucide-react";
 import type { AuditLogEntry } from "../hooks/useRecoveryData";
 
 interface PaymentJourney extends AuditLogEntry {
@@ -76,7 +83,9 @@ export default function PaymentDetail() {
   }
 
   const formatAmount = (amount: number) => `₹${amount.toLocaleString("en-IN")}`;
-  const confidencePercentage = journey.confidenceScore ? `${(journey.confidenceScore * 100).toFixed(0)}%` : "N/A";
+  const confidencePercentage = journey.confidenceScore
+    ? `${(journey.confidenceScore * 100).toFixed(0)}%`
+    : "N/A";
 
   return (
     <div className="min-h-screen bg-white text-black font-mono selection:bg-black selection:text-white">
@@ -96,7 +105,6 @@ export default function PaymentDetail() {
       </header>
 
       <main className="max-w-7xl mx-auto p-4 sm:p-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
         {/* Transaction Core Data */}
         <div className="lg:col-span-2 border-2 border-black p-6 flex flex-col gap-6 bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
           <div className="flex items-center justify-between border-b-2 border-black pb-2">
@@ -127,8 +135,20 @@ export default function PaymentDetail() {
           <div className="grid grid-cols-2 gap-4">
             <DataPoint label="Policy Status" value={journey.policyStatus} />
             <DataPoint label="Chosen Action" value={journey.action} />
-            <DataPoint label="EVR Score" value={journey.evrScore !== undefined ? `₹${journey.evrScore}` : "N/A"} />
-            <DataPoint label="Ops Cost" value={journey.operationalCost !== undefined ? `₹${journey.operationalCost}` : "₹2.50"} />
+            <DataPoint
+              label="EVR Score"
+              value={
+                journey.evrScore !== undefined ? `₹${journey.evrScore}` : "N/A"
+              }
+            />
+            <DataPoint
+              label="Ops Cost"
+              value={
+                journey.operationalCost !== undefined
+                  ? `₹${journey.operationalCost}`
+                  : "₹2.50"
+              }
+            />
           </div>
           {journey.paymentLinkUrl && (
             <a
@@ -156,7 +176,7 @@ export default function PaymentDetail() {
           <pre className="font-mono text-xs sm:text-sm leading-relaxed whitespace-pre-wrap text-neutral-300">
             {`[NODE 1: DIAGNOSTIC] -> Evaluated error signature... Root cause identified.
 [NODE 2: POLICY]      -> Checked risk thresholds & velocity guard... Action: [${journey.action}]
-[NODE 3: GENERATIVE]  -> Channel selected: [${journey.recommendedChannel || 'SILENT'}]
+[NODE 3: GENERATIVE]  -> Channel selected: [${journey.recommendedChannel || "SILENT"}]
 
 --- RAW LLM DIAGNOSTIC REASONING ---
 ${journey.aiDiagnosis}`}
@@ -164,9 +184,11 @@ ${journey.aiDiagnosis}`}
           {journey.customerHook && (
             <div className="mt-2 border border-neutral-700 bg-neutral-900 p-3">
               <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest block mb-1">
-                Generated Customer Hook ({journey.recommendedChannel || 'WEB'}):
+                Generated Customer Hook ({journey.recommendedChannel || "WEB"}):
               </span>
-              <p className="text-xs sm:text-sm italic">"{journey.customerHook}"</p>
+              <p className="text-xs sm:text-sm italic">
+                "{journey.customerHook}"
+              </p>
             </div>
           )}
         </div>
@@ -178,11 +200,13 @@ ${journey.aiDiagnosis}`}
               <ShieldCheck className="w-4 h-4" /> Execution Timeline
             </h2>
           </div>
-          <div className="flex flex-col gap-4 mt-2 max-h-[280px] overflow-y-auto pr-2">
+          <div className="flex flex-col gap-4 mt-2 max-h-70 overflow-y-auto pr-2">
             {journey.timelineEvents?.map((evt, idx) => (
               <div key={idx} className="relative pl-4 border-l-2 border-black">
-                <span className="absolute -left-[5px] top-1.5 w-2 h-2 bg-black"></span>
-                <div className="text-xs sm:text-sm font-bold uppercase">{evt.event}</div>
+                <span className="absolute -left-1.25 top-1.5 w-2 h-2 bg-black"></span>
+                <div className="text-xs sm:text-sm font-bold uppercase">
+                  {evt.event}
+                </div>
                 <div className="text-[10px] font-bold opacity-60 mt-0.5">
                   {new Date(evt.timestamp).toLocaleTimeString()}
                 </div>
@@ -190,7 +214,6 @@ ${journey.aiDiagnosis}`}
             ))}
           </div>
         </div>
-
       </main>
     </div>
   );
