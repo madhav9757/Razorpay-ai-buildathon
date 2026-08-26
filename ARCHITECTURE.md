@@ -14,39 +14,40 @@ $$
 
 ```mermaid
 graph TD
-    subgraph Ingestion ["1. Ingestion & Security Layer"]
-        A[Razorpay Webhook POST] --> B[Idempotency Hash Check: paymentId + timestamp]
-        B -->|Duplicate < 5s Window| B_Drop[Silent Debounce & Drop]
-        B -->|Unique Payload| C[Algorithmic Velocity Guardrail: Map<string, timestamps>]
-        C -->| > 3 Failures / 60s | C_Reject[Halt: VELOCITY_LIMIT_EXCEEDED]
+    classDef default fill:#ffffff,stroke:#000000,stroke-width:2px,color:#000000,font-family:monospace;
+
+    Webhook[Razorpay Webhook POST] --> Idempotency[Idempotency Hash Filter]
+    Idempotency --> Velocity[Sliding-Window Velocity Guardrail]
+    Velocity --> Risk[Deterministic Risk & EVR Economic Gate]
+
+    Risk -->|Negative EVR or Below ₹500| Reject[Silent Halt / Drop]
+    Risk -->|Viable EVR > 0| AI[Multi-Agent Prompt Chaining Pipeline]
+
+    subgraph AI_Pipeline [OpenRouter LLM Cluster]
+        AI --> Diagnostic[Node 1: Diagnostic Agent <br/> Extracts Root Cause & Confidence]
+        Diagnostic --> Policy[Node 2: Policy Agent <br/> Determines Optimal Action]
+        Policy --> Generative[Node 3: Generative Agent <br/> Drafts Communication Hook]
     end
 
-    subgraph Risk_EVR ["2. Deterministic Risk & Economic Gate (EVR)"]
-        C -->|Passed Velocity| D{Deterministic Rules}
-        D -->|Amount <= ₹500 or Permanent Fraud Code| D_Reject[Halt: Non-Viable / Blacklisted]
-        D -->|Passed Threshold| E[Expected Value of Recovery Calculation]
-        E -->|"EVR = (V * Pc * Hr) - C_ops <= 0"| E_Reject[Halt: Negative Net Economic Yield]
-        E -->|"EVR > 0 (Financially Viable)"| F[Initialize Multi-Agent Chain]
-    end
+    Generative --> Action{Execution Dispatch Matrix}
 
-    subgraph AI_Chain ["3. Multi-Agent Prompt Chaining (OpenRouter API Pipeline)"]
-        F --> G[Agent 1: Diagnostic Node <br/> Parses error signature -> root_cause & confidence_score]
-        G --> H[Agent 2: Business Policy Node <br/> Evaluates root_cause & retry_count -> Action Selection]
-        H --> I[Agent 3: Generative Node <br/> Selects communication channel & drafts localized hook]
-    end
+    Action -->|PAYMENT_LINK| Link[Generate Secure Razorpay Link + SMS/WhatsApp Hook]
+    Action -->|RETRY| Retry[Queue Automated Gateway Backoff Retry]
+    Action -->|ESCALATE| Escalate[Flag to Human Operator Dashboard]
+    Action -->|HALT| Halt[Terminate Workflow & Commit Audit Record]
 
-    subgraph Execution ["4. Execution Dispatch Matrix"]
-        I --> J{Synthesized Action Decision}
-        J -->|PAYMENT_LINK| K[Generate Dynamic Razorpay Link & Dispatch Hook via SMS/WhatsApp]
-        J -->|RETRY| L[Trigger Backoff & Queue Automated Gateway Retry]
-        J -->|ESCALATE| M[Flag to Human Operator Dashboard for Manual Review]
-        J -->|HALT| N[Silently Terminate Workflow & Commit Final Audit Record]
-    end
-
-    style Ingestion fill:#ffffff,stroke:#000000,stroke-width:2px,color:#000000
-    style Risk_EVR fill:#ffffff,stroke:#000000,stroke-width:2px,color:#000000
-    style AI_Chain fill:#000000,stroke:#000000,stroke-width:2px,color:#ffffff
-    style Execution fill:#ffffff,stroke:#000000,stroke-width:2px,color:#000000
+    style Webhook fill:#ffffff,stroke:#000000,stroke-width:2px
+    style Idempotency fill:#ffffff,stroke:#000000,stroke-width:2px
+    style Velocity fill:#ffffff,stroke:#000000,stroke-width:2px
+    style Risk fill:#ffffff,stroke:#000000,stroke-width:2px
+    style Reject fill:#000000,stroke:#ffffff,stroke-width:2px,color:#ffffff
+    style AI fill:#ffffff,stroke:#000000,stroke-width:2px
+    style AI_Pipeline fill:#f4f4f4,stroke:#000000,stroke-width:2px,stroke-dasharray: 4 4
+    style Action fill:#ffffff,stroke:#000000,stroke-width:2px
+    style Link fill:#ffffff,stroke:#000000,stroke-width:2px
+    style Retry fill:#ffffff,stroke:#000000,stroke-width:2px
+    style Escalate fill:#ffffff,stroke:#000000,stroke-width:2px
+    style Halt fill:#000000,stroke:#ffffff,stroke-width:2px,color:#ffffff
 ```
 
 ### 1.1 Ingestion & Idempotency Layer
