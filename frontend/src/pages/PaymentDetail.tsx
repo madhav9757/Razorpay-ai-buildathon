@@ -49,8 +49,12 @@ export default function PaymentDetail() {
         if (!res.ok) throw new Error("Journey not found");
         const data = await res.json();
         setJourney(data);
-      } catch (e: any) {
-        setError(e.message);
+      } catch (e: unknown) {
+        if (e instanceof Error) {
+          setError(e.message);
+        } else {
+          setError(String(e));
+        }
       } finally {
         setLoading(false);
       }
