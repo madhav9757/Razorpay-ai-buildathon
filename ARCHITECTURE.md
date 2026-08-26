@@ -25,8 +25,8 @@ graph TD
         C -->|Passed Velocity| D{Deterministic Rules}
         D -->|Amount <= ₹500 or Permanent Fraud Code| D_Reject[Halt: Non-Viable / Blacklisted]
         D -->|Passed Threshold| E[Expected Value of Recovery Calculation]
-        E -->|EVR = (V * Pc * Hr) - C_ops <= 0| E_Reject[Halt: Negative Net Economic Yield]
-        E -->|EVR > 0 (Financially Viable)| F[Initialize Multi-Agent Chain]
+        E -->|"EVR = (V * Pc * Hr) - C_ops <= 0"| E_Reject[Halt: Negative Net Economic Yield]
+        E -->|"EVR > 0 (Financially Viable)"| F[Initialize Multi-Agent Chain]
     end
 
     subgraph AI_Chain ["3. Multi-Agent Prompt Chaining (OpenRouter API Pipeline)"]
