@@ -12,11 +12,12 @@ $$
 \text{Webhook Payload} \longrightarrow \text{Idempotency Guard} \longrightarrow \text{Velocity Guardrail} \longrightarrow \text{EVR Economic Gate} \longrightarrow \text{Multi-Agent AI Chain} \longrightarrow \text{Action Dispatch}
 $$
 
-````mermaid
+```mermaid
 graph TD
     subgraph Ingestion ["1. Ingestion & Security Layer"]
         A[Razorpay Webhook POST] --> B[Idempotency Hash Check: paymentId + timestamp]
 ![Architecture Topology](./public/architecture.png)
+```
 
 ### 1.1 Ingestion & Idempotency Layer
 
@@ -65,7 +66,7 @@ interface DiagnosticOutput {
   root_cause: string;
   confidence_score: number;
 }
-````
+```
 
 ### Node 2: The Business Policy Node
 
