@@ -1,5 +1,7 @@
 # AI Revenue Recovery Engine
 
+<video src="./video/New%20project.mp4" controls width="100%"></video>
+
 **An autonomous payment failure diagnostics and recovery agent designed to capture lost revenue without human intervention.**
 
 Payment drop-offs due to gateway failures, authentication drops, or insufficient funds represent a massive leak in e-commerce revenue streams. Traditional systems simply mark these as "failed" and rely on manual follow-ups or generic automated emails that yield low conversion rates. 
